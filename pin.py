@@ -1,5 +1,5 @@
 import lgpio
-import pigpio  # pigpio 사용 추가
+import pigpio
 from time import sleep, time
 
 class pin:
