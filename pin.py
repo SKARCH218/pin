@@ -3,13 +3,12 @@ import pigpio
 from time import sleep, time
 
 class pin:
-    handle = None         # lgpio 핸들
-    pi = None             # pigpio 인스턴스
+    handle = None
+    pi = None
+    used_pins = set()  # 사용한 핀 기록
 
     @staticmethod
     def Setup(chip=0):
-        """ GPIO 칩 열기 (lgpio) + pigpio 연결 """
-
         if pin.handle is None:
             pin.handle = lgpio.gpiochip_open(chip)
         else:
@@ -22,27 +21,23 @@ class pin:
 
     @staticmethod
     def Read(pin_num):
-        """ 입력 설정 후 읽기 (lgpio) """
         lgpio.gpio_claim_input(pin.handle, pin_num)
+        pin.used_pins.add(pin_num)
         return lgpio.gpio_read(pin.handle, pin_num)
 
     @staticmethod
     def Write(pin_num, value):
-        """ 출력 설정 후 쓰기 (lgpio) """
         lgpio.gpio_claim_output(pin.handle, pin_num)
         lgpio.gpio_write(pin.handle, pin_num, value)
+        pin.used_pins.add(pin_num)
 
     @staticmethod
     def Free(pin_num):
-        """ 핀 해제 (lgpio) """
         lgpio.gpio_free(pin.handle, pin_num)
+        pin.used_pins.discard(pin_num)
 
     @staticmethod
     def Edge(pin_num, mode):
-        """
-        엣지(인터럽트) 감지 설정 (lgpio)
-        mode: "up" | "down" | "all"
-        """
         if mode == "up":
             lgpio.gpio_claim_alert(pin.handle, pin_num, lgpio.RISING_EDGE)
         elif mode == "down":
@@ -51,19 +46,18 @@ class pin:
             lgpio.gpio_claim_alert(pin.handle, pin_num, lgpio.BOTH_EDGES)
         else:
             return 0
+        pin.used_pins.add(pin_num)
 
     @staticmethod
     def GetDistance(trig_pin, echo_pin, timeout_s=0.04):
-        """
-        초음파 센서 거리 측정 (lgpio)
-        """
         lgpio.gpio_claim_output(pin.handle, trig_pin)
         lgpio.gpio_claim_input(pin.handle, echo_pin)
+        pin.used_pins.update([trig_pin, echo_pin])
 
         lgpio.gpio_write(pin.handle, trig_pin, 0)
-        sleep(0.000002)  # 2us
+        sleep(0.000002)
         lgpio.gpio_write(pin.handle, trig_pin, 1)
-        sleep(0.00001)   # 10us
+        sleep(0.00001)
         lgpio.gpio_write(pin.handle, trig_pin, 0)
 
         start_time = time()
@@ -86,10 +80,6 @@ class pin:
 
     @staticmethod
     def ServoWrite(pin_num, angle):
-        """
-        서보모터 제어 (pigpio 사용)
-        angle: 0 ~ 180 도
-        """
         if pin.pi is None:
             raise Exception("pigpio 인스턴스 없음. Setup() 먼저 호출하세요.")
 
@@ -101,18 +91,36 @@ class pin:
 
     @staticmethod
     def ServoStop(pin_num):
-        """
-        서보 PWM 정지 (pigpio 사용)
-        """
         if pin.pi is None:
             raise Exception("pigpio 인스턴스 없음. Setup() 먼저 호출하세요.")
 
         pin.pi.set_servo_pulsewidth(pin_num, 0)
 
     @staticmethod
-    def Clean():
-        """ lgpio 핸들 닫기 + pigpio 연결 해제 """
+    def Clean(all=False):
+        """ 핸들 닫기 + 사용 핀 해제 + pigpio 정리
+            all=True일 경우 0~27 모든 핀을 0으로 출력 후 해제
+            all=False일 경우 사용된 핀만 0으로 출력 후 해제
+        """
         if pin.handle is not None:
+            if all:
+                for pin_num in range(0, 28):  # GPIO 0 ~ 27
+                    try:
+                        lgpio.gpio_claim_output(pin.handle, pin_num)
+                        lgpio.gpio_write(pin.handle, pin_num, 0)
+                        lgpio.gpio_free(pin.handle, pin_num)
+                    except Exception:
+                        pass  # 사용 불가능한 핀 무시
+            else:
+                for pin_num in list(pin.used_pins):
+                    try:
+                        lgpio.gpio_claim_output(pin.handle, pin_num)
+                        lgpio.gpio_write(pin.handle, pin_num, 0)
+                        lgpio.gpio_free(pin.handle, pin_num)
+                    except Exception:
+                        pass
+                pin.used_pins.clear()
+
             lgpio.gpiochip_close(pin.handle)
             pin.handle = None
 
