@@ -49,7 +49,7 @@ class pin:
         pin.used_pins.add(pin_num)
 
     @staticmethod
-    def GetDistance(trig_pin, echo_pin, timeout_s=0.04):
+    def GetDistance(trig_pin, echo_pin, timeout_s=0.1):  # timeout 0.1초로 늘림
         lgpio.gpio_claim_output(pin.handle, trig_pin)
         lgpio.gpio_claim_input(pin.handle, echo_pin)
         pin.used_pins.update([trig_pin, echo_pin])
@@ -57,24 +57,26 @@ class pin:
         lgpio.gpio_write(pin.handle, trig_pin, 0)
         sleep(0.000002)
         lgpio.gpio_write(pin.handle, trig_pin, 1)
-        sleep(0.00001)
+        sleep(0.00001)  # 10us 트리거 신호
         lgpio.gpio_write(pin.handle, trig_pin, 0)
 
         start_time = time()
         timeout_time = start_time + timeout_s
 
         while lgpio.gpio_read(pin.handle, echo_pin) == 0:
-            start_time = time()
-            if start_time > timeout_time:
+            current_time = time()
+            if current_time > timeout_time:
                 return -1
 
-        stop_time = time()
+        pulse_start = time()
         while lgpio.gpio_read(pin.handle, echo_pin) == 1:
-            stop_time = time()
-            if stop_time > timeout_time:
+            current_time = time()
+            if current_time > timeout_time:
                 return -1
 
-        elapsed = stop_time - start_time
+        pulse_end = time()
+        elapsed = pulse_end - pulse_start
+
         distance_cm = (elapsed * 34300) / 2
         return distance_cm
 
