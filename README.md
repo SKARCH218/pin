@@ -1,82 +1,166 @@
-# pin.py - Raspberry Pi GPIO 제어 유틸리티
+# `pin.py`: Raspberry Pi & Arduino 제어 라이브러리
 
-## 소개
+`pin.py`는 라즈베리파이의 GPIO 핀을 직접 제어하고, 시리얼 통신을 통해 아두이노를 제어할 수 있는 기능을 제공하는 파이썬 라이브러리입니다. `Rasp` 클래스와 `Ard` 클래스로 구성되어 있습니다.
 
-이 라이브러리는 Raspberry Pi에서 `lgpio`와 `pigpio`를 결합하여
-하나의 `pin` 클래스로 GPIO, 초음파 센서, 서보 모터를 간편하게 제어할 수 있도록 설계되었습니다.
+## 주요 기능
 
-- `lgpio` : 일반 GPIO 입출력, 인터럽트, 초음파 거리 측정용
-- `pigpio` : 정밀한 PWM 신호를 요구하는 서보모터 제어용
+- **라즈베리파이 GPIO 제어 (`Rasp` 클래스):**
+  - 디지털 입력/출력
+  - 초음파 센서(HC-SR04) 거리 측정
+  - 서보 모터 제어 (PWM)
+  - 인터럽트(Edge) 감지
+- **아두이노 시리얼 제어 (`Ard` 클래스):**
+  - 디지털/아날로그 입출력
+  - 서보 모터 제어
+  - **인터럽트(Edge) 감지**
+  - 다중 아두이노 지원
 
----
+## 설치 및 요구사항
 
-##  주요 기능
-
-| 메서드 | 설명 |
-|--------|------|
-| `Setup()` | `lgpio` 핸들 열기 + `pigpio` 연결 |
-| `Read(pin_num)` | 디지털 입력 읽기 |
-| `Write(pin_num, value)` | 디지털 출력 쓰기 |
-| `Edge(pin_num, mode)` | 상승/하강/양쪽 엣지 인터럽트 설정 |
-| `GetDistance(trig_pin, echo_pin)` | 초음파 센서 거리 측정 |
-| `ServoWrite(pin_num, angle)` | 서보 모터 각도 설정 |
-| `ServoStop(pin_num)` | 서보 모터 PWM 정지 |
-| `Clean()` | `lgpio` 핸들 닫기 + `pigpio` 연결 종료 |
-
----
-
-## 의존성
-
-- Python 3.x
-- [lgpio](https://abyz.me.uk/lg/py_lgpio.html)
-- [pigpio](http://abyz.me.uk/rpi/pigpio/python.html)
-
----
-
-## 설치
+### Python 라이브러리
+다음 파이썬 라이브러리가 필요합니다. `pip`를 사용하여 설치할 수 있습니다.
 
 ```bash
-# pigpio 설치 (이미 설치된 경우 생략)
-sudo apt-get install pigpio python3-pigpio
+pip install lgpio pyserial
 ```
 
-# lgpio 설치 (예시)
-pip install lgpio
+### 아두이노 설정
+`Ard` 클래스를 사용하려면, `pin.py`에서 보내는 시리얼 명령어를 해석하여 실행할 수 있는 스케치가 아두이노에 업로드되어 있어야 합니다. (`pin/Ard_ino/ard.ino` 파일 참조)
 
-# 사용 예시
+---
+
+## `Rasp` 클래스 사용법 (라즈베리파이)
+
+### 1. 초기화 및 정리
+GPIO를 사용하기 전에 `Setup`을 호출하고, 사용이 끝나면 `Clean`을 호출하여 리소스를 정리해야 합니다.
+
 ```python
-from pin import pin
-from time import sleep
+from pin import Rasp
+import time
 
-# GPIO, pigpio 초기화
-pin.Setup()
+# GPIO 핸들 초기화
+Rasp.Setup()
 
-# 서보 모터 (GPIO 24)에 90도 출력
-pin.ServoWrite(24, 90)
-sleep(2)
-pin.ServoWrite(24, 0)
+try:
+    # 여기에 코드 작성
+    Rasp.Write(17, 1) # GPIO 17번 핀에 HIGH 출력
+    time.sleep(1)
+    print(f"GPIO 17번 핀 상태: {Rasp.Read(17)}")
 
-# 초음파 센서 거리 측정
-distance = pin.GetDistance(18, 23)
-print(f"거리: {distance:.2f} cm")
-
-# 정리
-pin.ServoStop(24)
-pin.Clean()
+finally:
+    # 사용한 모든 핀을 정리하고 핸들을 닫습니다.
+    Rasp.Clean()
+    print("GPIO가 정리되었습니다.")
 ```
 
-# 주의사항
-## 서보모터를 사용할 때는 반드시 pigpiod 데몬을 실행해야 합니다.
-```bash
-sudo pigpiod
-```
-## 혹은 Python에서 자동 실행하고 싶다면:
+### 2. 디지털 입출력
+
+- `Rasp.Write(pin_num, value)`: `value` (0 또는 1)를 지정된 핀에 출력합니다.
+- `Rasp.Read(pin_num)`: 지정된 핀의 디지털 값을 읽어 0 또는 1을 반환합니다.
+
+### 3. 초음파 센서 거리 측정
+
+- `Rasp.GetDistance(trig_pin, echo_pin)`: 트리거 핀과 에코 핀을 사용하여 거리를 cm 단위로 측정합니다.
+
 ```python
-import os
-os.system("sudo pigpiod")
-Clean() 메서드를 호출하여 사용이 끝난 후 자원을 반납하세요.
+# Trig: GPIO 23, Echo: GPIO 24
+distance = Rasp.GetDistance(23, 24)
+if distance != -1:
+    print(f"측정된 거리: {distance:.2f} cm")
+else:
+    print("측정 실패")
 ```
 
-# 라이선스
-자유롭게 수정 및 사용 가능. 필요하다면 라이선스 파일 추가하세요!
-SKARCH218 제작
+### 4. 서보 모터 제어
+
+- `Rasp.ServoWrite(pin_num, angle)`: 지정된 핀에 연결된 서보 모터를 `angle` (0~180도)만큼 회전시킵니다.
+- `Rasp.ServoStop(pin_num)`: 서보 모터 작동을 중지합니다.
+
+```python
+# GPIO 18번 핀에 연결된 서보 모터
+Rasp.ServoWrite(18, 90) # 90도로 회전
+time.sleep(1)
+Rasp.ServoStop(18)
+```
+
+---
+
+## `Ard` 클래스 사용법 (아두이노)
+
+`Ard` 클래스는 이제 인스턴스 기반으로 작동하며, 여러 아두이노를 동시에 제어할 수 있습니다. 핀 모드 설정은 각 메소드 호출 시 자동으로 처리됩니다.
+
+### 1. 아두이노 연결 및 종료
+아두이노와 통신을 시작하려면 `Ard` 객체를 생성하고, 사용이 끝나면 `Clean` 메소드를 호출합니다.
+
+```python
+from pin import Ard
+import time
+
+# 아두이노와 시리얼 연결 시작 (포트와 보드레이트 지정)
+# 여러 아두이노를 연결하려면 각각 다른 포트로 Ard 객체를 생성합니다.
+uno = Ard(port="/dev/ttyACM0", baud=9600)
+# mega = Ard(port="/dev/ttyACM1", baud=9600) # 예시: 두 번째 아두이노
+
+try:
+    # LED를 1초간 켭니다. (핀 모드 자동 설정)
+    uno.Write(13, 1) # 13번 핀에 HIGH 출력
+    time.sleep(1)
+    uno.Write(13, 0) # 13번 핀에 LOW 출력
+
+    # 아날로그 값 읽기
+    # sensor_val = uno.AnalogRead(A0) # A0 핀의 아날로그 값 읽기
+    # print(f"A0 핀 아날로그 값: {sensor_val}")
+
+finally:
+    # 아두이노 연결을 닫고 서보를 해제합니다.
+    uno.Clean()
+    # mega.Clean() # 예시: 두 번째 아두이노 정리
+    print("아두이노 연결이 종료되었습니다.")
+```
+
+### 2. 핀 제어
+
+- `Ard.Write(pin_num, value)`: 디지털 핀에 `value` (0 또는 1)를 씁니다. (자동으로 `OUTPUT` 모드 설정)
+- `Ard.Read(pin_num)`: 디지털 핀의 값을 읽습니다. (자동으로 `INPUT` 모드 설정)
+- `Ard.AnalogWrite(pin_num, value)`: 아날로그(PWM) 핀에 `value` (0~255)를 씁니다. (자동으로 `OUTPUT` 모드 설정)
+- `Ard.AnalogRead(pin_num)`: 아날로그 핀의 값을 읽습니다. (자동으로 `INPUT` 모드 설정)
+
+### 3. 서보 모터 제어
+
+- `Ard.ServoWrite(pin_num, angle)`: 아두이노의 지정된 핀에 연결된 서보 모터를 `angle` (0~180도)만큼 회전시킵니다.
+- `Ard.ServoStop(pin_num)`: 서보 모터 작동을 중지합니다.
+
+### 4. 인터럽트 감지
+
+`Ard` 클래스는 아두이노의 외부 인터럽트 핀을 사용하여 엣지(Edge) 감지를 지원합니다. 아두이노 보드에 따라 인터럽트를 지원하는 핀이 제한적일 수 있습니다. (예: Arduino Uno는 디지털 핀 2, 3번)
+
+- `Ard.Edge(pin_num, mode, callback)`: 지정된 핀에 인터럽트를 설정하고, 인터럽트 발생 시 호출될 콜백 함수를 등록합니다.
+  - `pin_num`: 인터럽트를 설정할 아두이노 핀 번호 (예: 2 또는 3)
+  - `mode`: 감지할 엣지 모드 (`"RISING"`, `"FALLING"`, `"BOTH"` 중 하나)
+  - `callback`: 인터럽트 발생 시 호출될 파이썬 함수. 이 함수는 두 개의 인자(`pin_num`, `value`)를 받습니다.
+- `Ard.DetachEdge(pin_num)`: 지정된 핀에서 인터럽트를 해제합니다.
+
+```python
+from pin import Ard
+import time
+
+def my_interrupt_callback(pin, value):
+    print(f"인터럽트 발생! 핀: {pin}, 값: {value}")
+
+uno = Ard(port="/dev/ttyACM0", baud=9600)
+
+try:
+    # 디지털 핀 2번에 RISING 엣지 인터럽트 설정
+    # 핀 2번에 버튼을 연결하고 눌러보세요.
+    uno.Edge(2, "RISING", my_interrupt_callback)
+    print("핀 2번에 RISING 엣지 인터럽트 설정됨. 버튼을 눌러보세요.")
+
+    # 프로그램이 종료되지 않도록 대기
+    while True:
+        time.sleep(1)
+
+finally:
+    # 인터럽트 해제 및 아두이노 연결 종료
+    uno.Clean()
+    print("아두이노 연결이 종료되었습니다.")
+```
