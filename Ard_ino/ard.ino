@@ -1,5 +1,4 @@
 #include <Servo.h>
-#include <Wire.h>
 
 #define MAX_SERVOS 8
 
@@ -30,15 +29,8 @@ void detachServo(int pin) {
   }
 }
 
-void detachInterruptFromPin(int pin) {
-  if (digitalPinToInterrupt(pin) != NOT_AN_INTERRUPT) {
-      detachInterrupt(digitalPinToInterrupt(pin));
-  }
-}
-
 void setup() {
   Serial.begin(9600);
-  Wire.begin(); // Initialize I2C bus (I2C 버스 초기화)
   while (!Serial);
   for (int i = 0; i < MAX_SERVOS; i++) {
     servo_attached_status[i] = false;
@@ -95,51 +87,6 @@ void loop() {
     else if (cmd.startsWith("SERVOSTOP")) {
       int pin = cmd.substring(10).toInt();
       detachServo(pin);
-    } 
-    else if (cmd.startsWith("I2CWRITE")) {
-      int first_space = cmd.indexOf(' ');
-      int second_space = cmd.indexOf(' ', first_space + 1);
-      int addr = cmd.substring(first_space + 1, second_space).toInt();
-      String data_str = cmd.substring(second_space + 1);
-      Wire.beginTransmission(addr);
-      int current_pos = 0;
-      while(current_pos < data_str.length()){
-        int next_space = data_str.indexOf(' ', current_pos);
-        if(next_space == -1) next_space = data_str.length();
-        Wire.write(data_str.substring(current_pos, next_space).toInt());
-        current_pos = next_space + 1;
-      }
-      byte status = Wire.endTransmission();
-      Serial.print("OK: I2C Write Status ");
-      Serial.println(status);
-    } 
-    else if (cmd.startsWith("I2CREAD")) {
-      int first_space = cmd.indexOf(' ');
-      int second_space = cmd.indexOf(' ', first_space + 1);
-      int addr = cmd.substring(first_space + 1, second_space).toInt();
-      int count = cmd.substring(second_space + 1).toInt();
-      Wire.requestFrom(addr, count);
-      String response = "";
-      while (Wire.available()) {
-        response += String(Wire.read()) + " ";
-      }
-      response.trim();
-      Serial.println(response);
-    } 
-    else if (cmd.startsWith("CLEANALL")) {
-      for (int i = 0; i < MAX_SERVOS; i++) {
-        if (servo_attached_status[i]) {
-          servos[i].detach();
-          servo_attached_status[i] = false;
-          servo_pins[i] = -1;
-        }
-      }
-      // On Uno/Nano, only pins 2 and 3 are interrupt capable.
-      // 우노/나노에서는 2, 3번 핀만 인터럽트가 가능합니다.
-      detachInterruptFromPin(2);
-      detachInterruptFromPin(3);
-      Serial.println("OK: All cleaned");
     }
-    // Other commands from previous version...
   }
 }
