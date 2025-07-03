@@ -4,6 +4,7 @@ import time
 import threading
 import asyncio
 import serial_asyncio
+import pigpio # Added
 
 # --- Constants ---
 SPEED_OF_SOUND_CM_S = 34300
@@ -28,6 +29,9 @@ class Rasp:
         self.spi_handle = None
         self._i2c_bus = i2c_bus
         self._spi_channel = spi_channel
+        self.pi = pigpio.pi() # Added
+        if not self.pi.connected: # Added
+            raise Exception("pigpio daemon not connected! Run 'sudo pigpiod'") # Added
 
     def __enter__(self):
         return self
@@ -50,34 +54,33 @@ class Rasp:
         lgpio.gpio_free(self.handle, pin_num)
         self.used_pins.discard(pin_num)
 
-    # --- PWM Methods ---
+    # --- PWM Methods (using pigpio) ---
     def pwm_start(self, pin_num, duty_cycle, frequency=PWM_FREQUENCY_HZ):
         """
-        Starts PWM on a pin with a given duty cycle and frequency.
-        주어진 듀티 사이클과 주파수로 핀에서 PWM을 시작합니다.
+        Starts PWM on a pin with a given duty cycle and frequency using pigpio.
+        주어진 듀티 사이클과 주파수로 핀에서 PWM을 시작합니다 (pigpio 사용).
         """
-        lgpio.tx_pwm(self.handle, pin_num, frequency, duty_cycle)
+        self.pi.set_PWM_frequency(pin_num, frequency)
+        self.pi.set_PWM_dutycycle(pin_num, int(255 * duty_cycle / 100)) # pigpio uses 0-255 for duty cycle
         self.used_pins.add(pin_num)
 
     def pwm_stop(self, pin_num):
         """
-        Stops PWM on a pin.
-        핀의 PWM을 중지합니다.
+        Stops PWM on a pin using pigpio.
+        핀의 PWM을 중지합니다 (pigpio 사용).
         """
-        try:
-            lgpio.tx_pwm(self.handle, pin_num, PWM_FREQUENCY_HZ, 0)
-        except lgpio.error:
-            pass
+        self.pi.set_PWM_dutycycle(pin_num, 0)
 
     def ServoWrite(self, pin_num, angle):
         if not (0 <= angle <= SERVO_MAX_ANGLE):
             raise ValueError(f"Angle must be between 0 and {int(SERVO_MAX_ANGLE)}.")
-        pulse_width_us = SERVO_MIN_PULSE_WIDTH_US + (angle / SERVO_MAX_ANGLE) * SERVO_PULSE_RANGE_US
-        duty_cycle = (pulse_width_us / PWM_PERIOD_US) * 100.0
-        self.pwm_start(pin_num, duty_cycle)
+        # pigpio uses microseconds for servo pulses
+        pulse_width_us = int(SERVO_MIN_PULSE_WIDTH_US + (angle / SERVO_MAX_ANGLE) * SERVO_PULSE_RANGE_US)
+        self.pi.set_servo_pulsewidth(pin_num, pulse_width_us)
+        self.used_pins.add(pin_num)
 
     def ServoStop(self, pin_num):
-        self.pwm_stop(pin_num)
+        self.pi.set_servo_pulsewidth(pin_num, 0) # Stop servo by setting pulsewidth to 0
 
     # --- I2C Methods ---
     def _open_i2c(self, device_addr):
@@ -132,6 +135,9 @@ class Rasp:
         if self.spi_handle is not None:
             lgpio.spi_close(self.spi_handle)
             self.spi_handle = None
+        if self.pi is not None: # Added
+            self.pi.stop() # Added
+            self.pi = None # Added
 
 class Ard:
     """
