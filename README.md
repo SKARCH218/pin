@@ -90,7 +90,7 @@ Rasp.ServoStop(18)
 `Ard` 클래스는 이제 인스턴스 기반으로 작동하며, 여러 아두이노를 동시에 제어할 수 있습니다. 핀 모드 설정은 각 메소드 호출 시 자동으로 처리됩니다.
 
 ### 1. 아두이노 연결 및 종료
-아두이노와 통신을 시작하려면 `Ard` 객체를 생성하고, 사용이 끝나면 `Clean` 메소드를 호출합니다.
+아두이노와 통신을 시작하려면 `Ard` 객체를 생성하고, 사용이 끝나면 `close` 메소드를 호출합니다.
 
 ```python
 from pin import Ard
@@ -103,64 +103,29 @@ uno = Ard(port="/dev/ttyACM0", baud=9600)
 
 try:
     # LED를 1초간 켭니다. (핀 모드 자동 설정)
-    uno.Write(13, 1) # 13번 핀에 HIGH 출력
+    uno.write(13, 1) # 13번 핀에 HIGH 출력
     time.sleep(1)
-    uno.Write(13, 0) # 13번 핀에 LOW 출력
+    uno.write(13, 0) # 13번 핀에 LOW 출력
 
     # 아날로그 값 읽기
-    # sensor_val = uno.AnalogRead(A0) # A0 핀의 아날로그 값 읽기
+    # sensor_val = uno.analog_read(A0) # A0 핀의 아날로그 값 읽기
     # print(f"A0 핀 아날로그 값: {sensor_val}")
 
 finally:
     # 아두이노 연결을 닫고 서보를 해제합니다.
-    uno.Clean()
-    # mega.Clean() # 예시: 두 번째 아두이노 정리
+    uno.close()
+    # mega.close() # 예시: 두 번째 아두이노 정리
     print("아두이노 연결이 종료되었습니다.")
 ```
 
 ### 2. 핀 제어
 
-- `Ard.Write(pin_num, value)`: 디지털 핀에 `value` (0 또는 1)를 씁니다. (자동으로 `OUTPUT` 모드 설정)
-- `Ard.Read(pin_num)`: 디지털 핀의 값을 읽습니다. (자동으로 `INPUT` 모드 설정)
-- `Ard.AnalogWrite(pin_num, value)`: 아날로그(PWM) 핀에 `value` (0~255)를 씁니다. (자동으로 `OUTPUT` 모드 설정)
-- `Ard.AnalogRead(pin_num)`: 아날로그 핀의 값을 읽습니다. (자동으로 `INPUT` 모드 설정)
+- `instance.write(pin_num, value)`: 디지털 핀에 `value` (0 또는 1)를 씁니다. (자동으로 `OUTPUT` 모드 설정)
+- `instance.read(pin_num)`: 디지털 핀의 값을 읽습니다. (자동으로 `INPUT` 모드 설정)
+- `instance.analog_write(pin_num, value)`: 아날로그(PWM) 핀에 `value` (0~255)를 씁니다. (자동으로 `OUTPUT` 모드 설정)
+- `instance.analog_read(pin_num)`: 아날로그 핀의 값을 읽습니다. (자동으로 `INPUT` 모드 설정)
 
 ### 3. 서보 모터 제어
 
-- `Ard.ServoWrite(pin_num, angle)`: 아두이노의 지정된 핀에 연결된 서보 모터를 `angle` (0~180도)만큼 회전시킵니다.
-- `Ard.ServoStop(pin_num)`: 서보 모터 작동을 중지합니다.
-
-### 4. 인터럽트 감지
-
-`Ard` 클래스는 아두이노의 외부 인터럽트 핀을 사용하여 엣지(Edge) 감지를 지원합니다. 아두이노 보드에 따라 인터럽트를 지원하는 핀이 제한적일 수 있습니다. (예: Arduino Uno는 디지털 핀 2, 3번)
-
-- `Ard.Edge(pin_num, mode, callback)`: 지정된 핀에 인터럽트를 설정하고, 인터럽트 발생 시 호출될 콜백 함수를 등록합니다.
-  - `pin_num`: 인터럽트를 설정할 아두이노 핀 번호 (예: 2 또는 3)
-  - `mode`: 감지할 엣지 모드 (`"RISING"`, `"FALLING"`, `"BOTH"` 중 하나)
-  - `callback`: 인터럽트 발생 시 호출될 파이썬 함수. 이 함수는 두 개의 인자(`pin_num`, `value`)를 받습니다.
-- `Ard.DetachEdge(pin_num)`: 지정된 핀에서 인터럽트를 해제합니다.
-
-```python
-from pin import Ard
-import time
-
-def my_interrupt_callback(pin, value):
-    print(f"인터럽트 발생! 핀: {pin}, 값: {value}")
-
-uno = Ard(port="/dev/ttyACM0", baud=9600)
-
-try:
-    # 디지털 핀 2번에 RISING 엣지 인터럽트 설정
-    # 핀 2번에 버튼을 연결하고 눌러보세요.
-    uno.Edge(2, "RISING", my_interrupt_callback)
-    print("핀 2번에 RISING 엣지 인터럽트 설정됨. 버튼을 눌러보세요.")
-
-    # 프로그램이 종료되지 않도록 대기
-    while True:
-        time.sleep(1)
-
-finally:
-    # 인터럽트 해제 및 아두이노 연결 종료
-    uno.Clean()
-    print("아두이노 연결이 종료되었습니다.")
-```
+- `instance.servo_write(pin_num, angle)`: 아두이노의 지정된 핀에 연결된 서보 모터를 `angle` (0~180도)만큼 회전시킵니다.
+- `instance.servo_stop(pin_num)`: 서보 모터 작동을 중지합니다.

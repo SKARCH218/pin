@@ -1,263 +1,199 @@
 import lgpio
+import pigpio
 import serial
 import time
-import threading
-import asyncio
-import serial_asyncio
-import pigpio # Added
-
-# --- Constants ---
-SPEED_OF_SOUND_CM_S = 34300
-TRIGGER_PULSE_DELAY = 0.000002
-TRIGGER_PULSE_WIDTH = 0.00001
-
-PWM_FREQUENCY_HZ = 50
-SERVO_MIN_PULSE_WIDTH_US = 500.0
-SERVO_PULSE_RANGE_US = 2000.0
-SERVO_MAX_ANGLE = 180.0
-PWM_PERIOD_US = 1_000_000 / PWM_FREQUENCY_HZ
 
 class Rasp:
-    """
-    Controls Raspberry Pi GPIO, I2C, and SPI using the lgpio library.
-    lgpio 라이브러리를 사용하여 라즈베리파이의 GPIO, I2C, SPI를 제어합니다.
-    """
-    def __init__(self, chip=0, i2c_bus=1, spi_channel=0):
-        self.handle = lgpio.gpiochip_open(chip)
-        self.used_pins = set()
-        self.i2c_handle = None
-        self.spi_handle = None
-        self._i2c_bus = i2c_bus
-        self._spi_channel = spi_channel
-        self.pi = pigpio.pi() # Added
-        if not self.pi.connected: # Added
-            raise Exception("pigpio daemon not connected! Run 'sudo pigpiod'") # Added
+    handle = None
+    pi = None
+    used_pins = set()  # 사용한 핀 기록
 
-    def __enter__(self):
-        return self
+    @staticmethod
+    def Setup(chip=0):
+        if Rasp.handle is None:
+            Rasp.handle = lgpio.gpiochip_open(chip)
+        else:
+            raise Exception("이미 GPIO handle이 열려있습니다.")
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.Clean()
+        if Rasp.pi is None:
+            Rasp.pi = pigpio.pi()
+            if not Rasp.pi.connected:
+                raise Exception("pigpio 데몬 연결 실패! 'sudo pigpiod' 실행 필요")
 
-    # --- GPIO Methods ---
-    def Read(self, pin_num):
-        lgpio.gpio_claim_input(self.handle, pin_num)
-        self.used_pins.add(pin_num)
-        return lgpio.gpio_read(self.handle, pin_num)
+    @staticmethod
+    def Read(pin_num):
+        lgpio.gpio_claim_input(Rasp.handle, pin_num)
+        Rasp.used_pins.add(pin_num)
+        return lgpio.gpio_read(Rasp.handle, pin_num)
 
-    def Write(self, pin_num, value):
-        lgpio.gpio_claim_output(self.handle, pin_num)
-        lgpio.gpio_write(self.handle, pin_num, value)
-        self.used_pins.add(pin_num)
+    @staticmethod
+    def Write(pin_num, value):
+        lgpio.gpio_claim_output(Rasp.handle, pin_num)
+        lgpio.gpio_write(Rasp.handle, pin_num, value)
+        Rasp.used_pins.add(pin_num)
 
-    def Free(self, pin_num):
-        lgpio.gpio_free(self.handle, pin_num)
-        self.used_pins.discard(pin_num)
+    @staticmethod
+    def Free(pin_num):
+        lgpio.gpio_free(Rasp.handle, pin_num)
+        Rasp.used_pins.discard(pin_num)
 
-    # --- PWM Methods (using pigpio) ---
-    def pwm_start(self, pin_num, duty_cycle, frequency=PWM_FREQUENCY_HZ):
+    @staticmethod
+    def Edge(pin_num, mode):
+        if mode == "up":
+            lgpio.gpio_claim_alert(Rasp.handle, pin_num, lgpio.RISING_EDGE)
+        elif mode == "down":
+            lgpio.gpio_claim_alert(Rasp.handle, pin_num, lgpio.FALLING_EDGE)
+        elif mode == "all":
+            lgpio.gpio_claim_alert(Rasp.handle, pin_num, lgpio.BOTH_EDGES)
+        else:
+            return 0
+        Rasp.used_pins.add(pin_num)
+
+    @staticmethod
+    def GetDistance(trig_pin, echo_pin, timeout_s=0.1):  # timeout 0.1초로 늘림
+        lgpio.gpio_claim_output(Rasp.handle, trig_pin)
+        lgpio.gpio_claim_input(Rasp.handle, echo_pin)
+        Rasp.used_pins.update([trig_pin, echo_pin])
+
+        lgpio.gpio_write(Rasp.handle, trig_pin, 0)
+        time.sleep(0.000002)
+        lgpio.gpio_write(Rasp.handle, trig_pin, 1)
+        time.sleep(0.00001)  # 10us 트리거 신호
+        lgpio.gpio_write(Rasp.handle, trig_pin, 0)
+
+        start_time = time()
+        timeout_time = start_time + timeout_s
+
+        while lgpio.gpio_read(Rasp.handle, echo_pin) == 0:
+            current_time = time()
+            if current_time > timeout_time:
+                return -1
+
+        pulse_start = time()
+        while lgpio.gpio_read(Rasp.handle, echo_pin) == 1:
+            current_time = time()
+            if current_time > timeout_time:
+                return -1
+
+        pulse_end = time()
+        elapsed = pulse_end - pulse_start
+
+        distance_cm = (elapsed * 34300) / 2
+        return distance_cm
+
+    @staticmethod
+    def ServoWrite(pin_num, angle):
+        if Rasp.pi is None:
+            raise Exception("pigpio 인스턴스 없음. Setup() 먼저 호출하세요.")
+
+        if not (0 <= angle <= 180):
+            raise ValueError("angle은 0~180 사이여야 합니다.")
+
+        pulse_width = int(500 + (angle / 180) * 2000)
+        Rasp.pi.set_servo_pulsewidth(pin_num, pulse_width)
+
+    @staticmethod
+    def ServoStop(pin_num):
+        if Rasp.pi is None:
+            raise Exception("pigpio 인스턴스 없음. Setup() 먼저 호출하세요.")
+
+        Rasp.pi.set_servo_pulsewidth(pin_num, 0)
+
+    @staticmethod
+    def Clean(all=False):
+        """ 핸들 닫기 + 사용 핀 해제 + pigpio 정리
+            all=True일 경우 0~27 모든 핀을 0으로 출력 후 해제
+            all=False일 경우 사용된 핀만 0으로 출력 후 해제
         """
-        Starts PWM on a pin with a given duty cycle and frequency using pigpio.
-        주어진 듀티 사이클과 주파수로 핀에서 PWM을 시작합니다 (pigpio 사용).
-        """
-        self.pi.set_PWM_frequency(pin_num, frequency)
-        self.pi.set_PWM_dutycycle(pin_num, int(255 * duty_cycle / 100)) # pigpio uses 0-255 for duty cycle
-        self.used_pins.add(pin_num)
+        if Rasp.handle is not None:
+            if all:
+                for pin_num in range(0, 28):  # GPIO 0 ~ 27
+                    try:
+                        lgpio.gpio_claim_output(Rasp.handle, pin_num)
+                        lgpio.gpio_write(Rasp.handle, pin_num, 0)
+                        lgpio.gpio_free(Rasp.handle, pin_num)
+                    except Exception:
+                        pass  # 사용 불가능한 핀 무시
+            else:
+                for pin_num in list(Rasp.used_pins):
+                    try:
+                        lgpio.gpio_claim_output(Rasp.handle, pin_num)
+                        lgpio.gpio_write(Rasp.handle, pin_num, 0)
+                        lgpio.gpio_free(Rasp.handle, pin_num)
+                    except Exception:
+                        pass
+                Rasp.used_pins.clear()
 
-    def pwm_stop(self, pin_num):
-        """
-        Stops PWM on a pin using pigpio.
-        핀의 PWM을 중지합니다 (pigpio 사용).
-        """
-        self.pi.set_PWM_dutycycle(pin_num, 0)
+            lgpio.gpiochip_close(Rasp.handle)
+            Rasp.handle = None
 
-    def ServoWrite(self, pin_num, angle):
-        if not (0 <= angle <= SERVO_MAX_ANGLE):
-            raise ValueError(f"Angle must be between 0 and {int(SERVO_MAX_ANGLE)}.")
-        # pigpio uses microseconds for servo pulses
-        pulse_width_us = int(SERVO_MIN_PULSE_WIDTH_US + (angle / SERVO_MAX_ANGLE) * SERVO_PULSE_RANGE_US)
-        self.pi.set_servo_pulsewidth(pin_num, pulse_width_us)
-        self.used_pins.add(pin_num)
-
-    def ServoStop(self, pin_num):
-        self.pi.set_servo_pulsewidth(pin_num, 0) # Stop servo by setting pulsewidth to 0
-
-    # --- I2C Methods ---
-    def _open_i2c(self, device_addr):
-        if self.i2c_handle is None:
-            self.i2c_handle = lgpio.i2c_open(self._i2c_bus, device_addr)
-
-    def i2c_write_byte(self, device_addr, data):
-        self._open_i2c(device_addr)
-        lgpio.i2c_write_byte(self.i2c_handle, data)
-
-    def i2c_read_byte(self, device_addr):
-        self._open_i2c(device_addr)
-        return lgpio.i2c_read_byte(self.i2c_handle)
-
-    def i2c_write_device(self, device_addr, data):
-        self._open_i2c(device_addr)
-        lgpio.i2c_write_device(self.i2c_handle, data)
-
-    def i2c_read_device(self, device_addr, count):
-        self._open_i2c(device_addr)
-        _, data = lgpio.i2c_read_device(self.i2c_handle, count)
-        return data
-
-    # --- SPI Methods ---
-    def _open_spi(self, spi_flags=0, spi_baud=1000000):
-        if self.spi_handle is None:
-            self.spi_handle = lgpio.spi_open(self._spi_channel, spi_baud, spi_flags)
-
-    def spi_xfer(self, data, spi_flags=0, spi_baud=1000000):
-        self._open_spi(spi_flags, spi_baud)
-        _, rx_data = lgpio.spi_xfer(self.spi_handle, data)
-        return rx_data
-
-    def Clean(self, all_pins=False):
-        if self.handle is not None:
-            pins_to_clean = range(0, 28) if all_pins else list(self.used_pins)
-            for pin_num in pins_to_clean:
-                try:
-                    self.pwm_stop(pin_num)
-                    lgpio.gpio_claim_output(self.handle, pin_num)
-                    lgpio.gpio_write(self.handle, pin_num, 0)
-                    lgpio.gpio_free(self.handle, pin_num)
-                except lgpio.error:
-                    pass
-            if not all_pins:
-                self.used_pins.clear()
-            lgpio.gpiochip_close(self.handle)
-            self.handle = None
-        if self.i2c_handle is not None:
-            lgpio.i2c_close(self.i2c_handle)
-            self.i2c_handle = None
-        if self.spi_handle is not None:
-            lgpio.spi_close(self.spi_handle)
-            self.spi_handle = None
-        if self.pi is not None: # Added
-            self.pi.stop() # Added
-            self.pi = None # Added
+        if Rasp.pi is not None:
+            Rasp.pi.stop()
+            Rasp.pi = None
 
 class Ard:
-    """
-    Communicates with an Arduino over serial for various controls.
-    시리얼을 통해 아두이노와 통신하여 다양한 제어를 수행합니다.
-    """
-    def __init__(self, port="/dev/ttyACM0", baud=9600, timeout=1):
-        self.ser = serial.Serial(port, baud, timeout=timeout)
-        time.sleep(2)
-        self.used_pins = set()
-        self._interrupt_callbacks = {}
-        self._stop_thread = threading.Event()
-        self._read_thread = threading.Thread(target=self._read_serial_data, daemon=True)
-        self._read_thread.start()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.Clean()
-
-    def _read_serial_data(self):
-        while not self._stop_thread.is_set():
-            try:
-                if self.ser and self.ser.in_waiting > 0:
-                    line = self.ser.readline().decode('utf-8', errors='ignore').strip()
-                    if line.startswith("INTERRUPT"):
-                        parts = line.split()
-                        if len(parts) == 3:
-                            pin, value = int(parts[1]), int(parts[2])
-                            if pin in self._interrupt_callbacks:
-                                self._interrupt_callbacks[pin](pin, value)
-            except (serial.SerialException, OSError) as e:
-                print(f"Error reading from serial port: {e}")
-                break
-            time.sleep(0.01)
-
-    def _send_command(self, cmd):
-        if not self.ser or not self.ser.is_open:
-            raise serial.SerialException("Arduino is not connected.")
-        self.ser.write((cmd + "\n").encode('utf-8'))
-
-    def _receive_response(self):
-        if not self.ser or not self.ser.is_open:
-            raise serial.SerialException("Arduino is not connected.")
-        return self.ser.readline().decode('utf-8', errors='ignore').strip()
-
-    # --- I2C Methods ---
-    def i2c_write(self, addr, data):
-        """
-        Writes data to an I2C device via Arduino.
-        아두이노를 통해 I2C 장치에 데이터를 씁니다.
-        """
-        if isinstance(data, list):
-            data_str = ' '.join(map(str, data))
-        else:
-            data_str = str(data)
-        self._send_command(f"I2CWRITE {addr} {data_str}")
-        return self._receive_response()
-
-    def i2c_read(self, addr, count):
-        """
-        Reads data from an I2C device via Arduino.
-        아두이노를 통해 I2C 장치에서 데이터를 읽습니다.
-        """
-        self._send_command(f"I2CREAD {addr} {count}")
-        response = self._receive_response()
-        return [int(b) for b in response.split()]
-
-    def Clean(self):
-        if self.ser is not None and self.ser.is_open:
-            self._send_command("CLEANALL")
-            self._receive_response()
-            self._stop_thread.set()
-            if self._read_thread and self._read_thread.is_alive():
-                self._read_thread.join(timeout=1)
-            self.ser.close()
+    def __init__(self, port="/dev/ttyACM0", baud=9600):
         self.ser = None
+        self.used_pins = set()
+        try:
+            self.ser = serial.Serial(port, baud, timeout=1)
+            time.sleep(2)  # 아두이노 초기화 대기
+        except serial.SerialException as e:
+            raise Exception(f"시리얼 포트 연결 실패: {e}")
 
-class AsyncArd:
-    """
-    Asynchronous version of the Ard class using asyncio.
-    asyncio를 사용하는 Ard 클래스의 비동기 버전입니다.
-    """
-    def __init__(self):
-        self.reader = None
-        self.writer = None
+    def send(self, cmd):
+        if self.ser is None:
+            raise Exception("Arduino가 Setup 되지 않았습니다.")
+        self.ser.write((cmd + "\n").encode())
 
-    async def connect(self, port="/dev/ttyACM0", baud=9600):
-        self.reader, self.writer = await serial_asyncio.open_serial_connection(url=port, baudrate=baud)
-        await asyncio.sleep(2) # Wait for Arduino to initialize
+    def receive(self):
+        if self.ser is None:
+            raise Exception("Arduino가 Setup 되지 않았습니다.")
+        return self.ser.readline().decode().strip()
 
-    async def _send_command(self, cmd):
-        if not self.writer:
-            raise ConnectionError("Not connected to Arduino")
-        self.writer.write((cmd + "\n").encode('utf-8'))
-        await self.writer.drain()
+    def pin_mode(self, pin_num, mode):
+        self.send(f"PINMODE {pin_num} {mode}")
+        self.used_pins.add(pin_num)
 
-    async def _receive_response(self):
-        if not self.reader:
-            raise ConnectionError("Not connected to Arduino")
-        return (await self.reader.readline()).decode('utf-8', errors='ignore').strip()
+    def write(self, pin_num, value):
+        if isinstance(value, int):
+            value = "HIGH" if value else "LOW"
+        elif str(value).strip() == "1":
+            value = "HIGH"
+        elif str(value).strip() == "0":
+            value = "LOW"
 
-    async def Write(self, pin_num, value):
-        state = "HIGH" if value else "LOW"
-        await self._send_command(f"DWRITE {pin_num} {state}")
+        self.send(f"DWRITE {pin_num} {value}")
+        self.used_pins.add(pin_num)
 
-    async def Read(self, pin_num):
-        await self._send_command(f"DREAD {pin_num}")
-        return await self._receive_response()
+    def read(self, pin_num):
+        self.send(f"DREAD {pin_num}")
+        val = self.receive()
+        self.used_pins.add(pin_num)
+        return val
 
-    async def AnalogWrite(self, pin_num, value):
-        await self._send_command(f"AWRITE {pin_num} {value}")
+    def analog_write(self, pin_num, value):
+        self.send(f"AWRITE {pin_num} {value}")
+        self.used_pins.add(pin_num)
 
-    async def AnalogRead(self, pin_num):
-        await self._send_command(f"AREAD {pin_num}")
-        return await self._receive_response()
+    def analog_read(self, pin_num):
+        self.send(f"AREAD {pin_num}")
+        val = self.receive()
+        self.used_pins.add(pin_num)
+        return val
 
-    async def close(self):
-        if self.writer:
-            await self._send_command("CLEANALL")
-            self.writer.close()
-            await self.writer.wait_closed()
+    def servo_write(self, pin_num, angle):
+        if not (0 <= angle <= 180):
+            raise ValueError("angle은 0~180 사이여야 합니다.")
+        self.send(f"SERVOWRITE {pin_num} {angle}")
+        self.used_pins.add(pin_num)
+
+    def servo_stop(self, pin_num):
+        self.send(f"SERVOSTOP {pin_num}")
+        self.used_pins.add(pin_num)
+
+    def close(self):
+        if self.ser is not None:
+            self.ser.close()
+            self.ser = None
+            self.used_pins.clear()
