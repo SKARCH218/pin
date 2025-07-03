@@ -21,6 +21,8 @@
 ```bash
 pip install rpi-arduino-pin
 ```
+### 주의
+* 이 라이브러리는 RaspberryPi 환경에서만 사용할수 있습니다.
 
 ### 아두이노 설정
 `Ard` 클래스를 사용하려면, `pin.py`에서 보내는 시리얼 명령어를 해석하여 실행할 수 있는 스케치가 아두이노에 업로드되어 있어야 합니다. (`pin/Ard_ino/ard.ino` 파일 참조)
