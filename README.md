@@ -17,11 +17,9 @@
 
 ## 설치 및 요구사항
 
-### Python 라이브러리
-다음 파이썬 라이브러리가 필요합니다. `pip`를 사용하여 설치할 수 있습니다.
-
+### pip 를 통해 설치
 ```bash
-pip install lgpio pyserial
+pip install rpi-arduino-pin
 ```
 
 ### 아두이노 설정
