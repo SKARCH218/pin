@@ -2,10 +2,10 @@ from setuptools import setup, find_packages
 
 setup(
     name='rpi-arduino-pin',
-    version='0.1.0',
+    version='0.2.0',
     author='Taehun Kim',
     author_email='kimheuu0218@gmail.com',
-    description='A Python library for controlling Raspberry Pi GPIO and communicating with Arduino via serial.',
+    description='A Python library for controlling Raspberry Pi GPIO, I2C, SPI and communicating with Arduino via serial.',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
     url='https://github.com/SKARCH218/pin', # 본인의 GitHub 저장소 URL로 변경해주세요.
@@ -13,6 +13,7 @@ setup(
     install_requires=[
         'lgpio',
         'pyserial',
+        'pyserial-asyncio',
     ],
     classifiers=[
         'Programming Language :: Python :: 3',
