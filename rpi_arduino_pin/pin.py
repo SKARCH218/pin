@@ -261,6 +261,7 @@ class Ard:
                 try:
                     self.DetachEdge(pin_num)
                 except Exception as e:
+                
                     print(f"Error detaching interrupt for pin {pin_num}: {e}")
 
             self._send_command("CLEANALLSERVOS") # 아두이노에 모든 서보 해제 명령 전송
