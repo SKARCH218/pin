@@ -8,8 +8,9 @@
 먼저, 필요한 파이썬 라이브러리를 설치해야 합니다.
 
 ```bash
-pip install lgpio pyserial
+pip install rpi-arduino-pin
 ```
+*주의: `gpiozero` 라이브러리는 `rpi-arduino-pin` 설치 시 자동으로 함께 설치됩니다.*
 
 ### 2. 아두이노 스케치 업로드
 `Ard` 클래스를 사용하려면, 함께 제공되는 아두이노 스케치를 대상 아두이노 보드에 업로드해야 합니다. 이 스케치는 파이썬으로부터 시리얼 명령을 받아 처리하는 역할을 합니다.
@@ -62,8 +63,10 @@ print(f"GPIO 27번 핀의 상태: {pin_status}")
 
 ### 3. 서보 모터 제어 (Servo Control)
 
+`Rasp` 클래스의 서보 모터 제어는 내부적으로 `gpiozero` 라이브러리를 사용합니다. 이는 라즈베리파이 5와 같은 최신 모델에서 서보 제어의 안정성과 호환성을 높이기 위함입니다.
+
 - `Rasp.ServoWrite(pin_num, angle)`: 지정된 핀에 연결된 서보 모터를 `angle` (0~180도)로 회전시킵니다.
-- `Rasp.ServoStop(pin_num)`: 해당 핀의 PWM 출력을 중지하여 서보 모터 작동을 멈춥니다.
+- `Rasp.ServoStop(pin_num)`: 해당 핀의 서보 모터 작동을 중지합니다.
 
 ```python
 # GPIO 18번 핀의 서보 모터를 90도로 이동

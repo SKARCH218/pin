@@ -21,6 +21,7 @@
 ```bash
 pip install rpi-arduino-pin
 ```
+*주의: `gpiozero` 라이브러리는 `rpi-arduino-pin` 설치 시 자동으로 함께 설치됩니다.*
 ### 주의
 * 이 라이브러리는 RaspberryPi 환경에서만 사용할수 있습니다.
 
@@ -72,6 +73,8 @@ else:
 ```
 
 ### 4. 서보 모터 제어
+
+`Rasp` 클래스의 서보 모터 제어는 내부적으로 `gpiozero` 라이브러리를 사용합니다. 이는 라즈베리파이 5와 같은 최신 모델에서 서보 제어의 안정성과 호환성을 높이기 위함입니다.
 
 - `Rasp.ServoWrite(pin_num, angle)`: 지정된 핀에 연결된 서보 모터를 `angle` (0~180도)만큼 회전시킵니다.
 - `Rasp.ServoStop(pin_num)`: 서보 모터 작동을 중지합니다.
