@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='rpi-arduino-pin',
-    version='0.2.1',
+    version='0.2.2',
     author='Taehun Kim',
     author_email='kimheuu0218@gmail.com',
     description='A Python library for controlling Raspberry Pi GPIO, I2C, SPI and communicating with Arduino via serial.',
@@ -13,7 +13,7 @@ setup(
     install_requires=[
         'lgpio',
         'pyserial',
-        'pyserial-asyncio',
+        'gpiozero',
     ],
     classifiers=[
         'Programming Language :: Python :: 3',
