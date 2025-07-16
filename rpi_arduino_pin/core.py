@@ -1,6 +1,8 @@
 import lgpio
 import serial
 import time
+import spidev
+
 try:
     from gpiozero import Servo, Device
     from gpiozero.pins.lgpio import LGPIOFactory
@@ -12,6 +14,7 @@ class Rasp:
     handle = None
     used_pins = set()
     servos = {}  # gpiozero 서보 객체 관리
+    rfid_reader = None # RFID 리더 객체
 
     @staticmethod
     def Setup(chip=0):
@@ -113,7 +116,41 @@ class Rasp:
                 pass # PWM 핀이 아니면 에러 무시
 
     @staticmethod
+    def RFID_Setup(bus=0, device=0):
+        try:
+            spi = spidev.SpiDev()
+            spi.open(bus, device)
+            Rasp.rfid_reader = MFRC522(spi)
+            print("RFID 리더가 설정되었습니다.")
+        except Exception as e:
+            raise Exception(f"RFID 리더 설정 실패: {e}")
+
+    @staticmethod
+    def RFID_Read(as_string=True):
+        if Rasp.rfid_reader is None:
+            raise Exception("RFID 리더가 설정되지 않았습니다. RFID_Setup()을 먼저 호출해주세요.")
+        
+        (status, uid) = Rasp.rfid_reader.read_uid()
+        
+        if status == MFRC522.MI_OK:
+            if as_string:
+                return f"{uid[0]:02X}:{uid[1]:02X}:{uid[2]:02X}:{uid[3]:02X}"
+            else:
+                return uid
+        return None
+
+    @staticmethod
+    def RFID_Close():
+        if Rasp.rfid_reader is not None and hasattr(Rasp.rfid_reader, 'spi') and Rasp.rfid_reader.spi is not None:
+            Rasp.rfid_reader.spi.close()
+            Rasp.rfid_reader = None
+            print("RFID 리더 연결이 해제되었습니다.")
+
+    @staticmethod
     def Clean(all=False):
+        # RFID 리더 정리
+        Rasp.RFID_Close()
+
         # gpiozero 서보 정리
         if GPIOZERO_AVAILABLE:
             for pin in list(Rasp.servos.keys()):

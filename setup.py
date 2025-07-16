@@ -14,6 +14,7 @@ setup(
         'lgpio',
         'pyserial',
         'gpiozero',
+        'spidev',
     ],
     classifiers=[
         'Programming Language :: Python :: 3',
